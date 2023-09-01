@@ -4,13 +4,15 @@
 
 # Email receipt bucket
 resource "aws_s3_bucket" "receipts" {
-    bucket = "${var.account}-${var.domain_name}-ses-receipt-bucket"
+    count = var.create_s3_receipt_bucket ? 1 : 0 
+    bucket = "${local.account_id}-${var.domain_name}-ses-receipt-bucket"
     lifecycle {
-        prevent_destroy = var.prevent_destroy
+        prevent_destroy = false
     }
+    tags = var.default_tags
 }
 resource "aws_s3_bucket_ownership_controls" "receipts" {
-    bucket = aws_s3_bucket.receipts.id
+    bucket = aws_s3_bucket.receipts[0].id
     rule {
         object_ownership = "BucketOwnerPreferred"
     }
@@ -23,33 +25,34 @@ resource "aws_s3_bucket_ownership_controls" "receipts" {
 
 # Create SNS topic
 resource "aws_sns_topic" "topic" {
-  name = "fearfanatic"  # Replace with your desired topic name
+  count = var.create_sns_topic ? 1 : 0 
+  name = "${local.account_id}-${var.domain_name}-sns-topic"  # Replace with your desired topic name
 }
 
 # Create test topic subscription
 resource "aws_sns_topic_subscription" "user_updates_sqs_target" {
-  topic_arn = aws_sns_topic.topic.arn
+  topic_arn = aws_sns_topic.topic[0].arn
   protocol  = "email"
-  endpoint  = var.test_email_address
+  endpoint  = var.sns_test_email_address
 }
 
 # Create SNS subscriptions for bounce, complaint and delivery
 resource "aws_ses_identity_notification_topic" "test1" {
-  topic_arn                = aws_sns_topic.topic.arn
+  topic_arn                = aws_sns_topic.topic[0].arn
   notification_type        = "Bounce"
-  identity                 = aws_ses_domain_identity.example.domain
+  identity                 = aws_ses_domain_identity.example.*.domain
   include_original_headers = true
 }
 resource "aws_ses_identity_notification_topic" "test2" {
-  topic_arn                = aws_sns_topic.topic.arn
+  topic_arn                = aws_sns_topic.topic[0].arn
   notification_type        = "Complaint"
-  identity                 = aws_ses_domain_identity.example.domain
+  identity                 = aws_ses_domain_identity.example.*.domain
   include_original_headers = true
 }
 resource "aws_ses_identity_notification_topic" "test3" {
-  topic_arn                = aws_sns_topic.topic.arn
+  topic_arn                = aws_sns_topic.topic[0].arn
   notification_type        = "Delivery"
-  identity                 = aws_ses_domain_identity.example.domain
+  identity                 = aws_ses_domain_identity.example.*.domain
   include_original_headers = true
 }
 
@@ -61,7 +64,7 @@ resource "aws_ses_event_destination" "sns" {
   matching_types         = ["bounce", "send"]
 
   sns_destination {
-    topic_arn = aws_sns_topic.topic.arn
+    topic_arn = aws_sns_topic.topic.*.arn
   }
 }
 
@@ -71,7 +74,7 @@ resource "aws_ses_event_destination" "sns" {
 
 # Create email template
 resource "aws_ses_template" "MyTemplate" {
-  name    = "fearfanatic"
+  name    = var.domain_name
   subject = "Greetings, {{name}}!"
   html    = "<h1>Hello {{name}},</h1><p>Your favorite animal is {{favoriteanimal}}.</p>"
   text    = "Hello {{name}},\r\nYour favorite animal is {{favoriteanimal}}."
@@ -85,7 +88,7 @@ resource "aws_ses_configuration_set" "example" {
 // MAIN 
 # create SES domain identity and verification
 resource "aws_ses_domain_identity" "example" {
-  domain = local.domain  # Replace with your actual domain
+  domain = var.domain
 }
 # Create Route53 record
 resource "aws_route53_record" "example_amazonses_verification_record" {
@@ -138,7 +141,7 @@ resource "aws_ses_identity_policy" "example" {
 // MAIL FROM
 resource "aws_ses_domain_mail_from" "example" {
   domain           = aws_ses_domain_identity.example.domain
-  mail_from_domain = "info.${aws_ses_domain_identity.example.domain}"
+  mail_from_domain = "${var.mail_from}.${aws_ses_domain_identity.example.domain}"
 }
 # Example Route53 MX record
 resource "aws_route53_record" "example_ses_domain_mail_from_mx" {
@@ -146,9 +149,8 @@ resource "aws_route53_record" "example_ses_domain_mail_from_mx" {
   name    = aws_ses_domain_mail_from.example.mail_from_domain
   type    = "MX"
   ttl     = "600"
-  records = ["10 feedback-smtp.${var.region_name}.amazonses.com"] 
+  records = ["10 feedback-smtp.${local.region}.amazonses.com"] 
 }
-
 # Example Route53 TXT record for SPF
 resource "aws_route53_record" "example_ses_domain_mail_from_txt" {
   zone_id = data.aws_route53_zone.example.id
@@ -158,26 +160,23 @@ resource "aws_route53_record" "example_ses_domain_mail_from_txt" {
   records = ["v=spf1 include:amazonses.com -all"]
 }
 
-
-// TRUSTED EMAIL ADDRESSES
-# Test SES Email identity
-resource "aws_ses_email_identity" "hotmail" {
-  email = "craighoad@hotmail.com"
-}
-# Test SES Email identity
+// Register trusted email addresses
 resource "aws_ses_email_identity" "example" {
-  email = "thefearfanatic@gmail.com"
+  for_each = { for email in var.trusted_email_addresses : email => email }
+  email = each.value
 }
+
 
 // SES SMTP Credentials
 # Create IAM user
 resource "aws_iam_user" "user" {
-  name = "${local.app}-ses-user"
+  name = "${var.domain_name}-ses-user"
   force_destroy = "true"
-  tags = local.tags
+  tags = var.default_tags
 }
 # Create policy doc
 data "aws_iam_policy_document" "policy_document" {
+  for_each = { for email in var.trusted_email_addresses : email => email }
   statement {
     actions   = [      
       "ses:SendEmail",
@@ -190,13 +189,13 @@ data "aws_iam_policy_document" "policy_document" {
       "iam:ListAccessKeys",
       "iam:UpdateAccessKey"
     ]
-    resources = [aws_ses_email_identity.example.arn]
+    resources = [aws_ses_email_identity.example[each.key].arn]
   }
 }
 # Instanitate policy doc
 resource "aws_iam_policy" "policy" {
   name   = "SES-send-policy"
-  policy = data.aws_iam_policy_document.policy_document.json
+  policy = data.aws_iam_policy_document.policy_document.*.json
 }
 # Attach policy doc to user
 resource "aws_iam_user_policy_attachment" "user_policy" {

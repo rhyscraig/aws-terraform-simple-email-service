@@ -39,7 +39,7 @@ variable sns_test_email_address {
 variable trusted_email_addresses {
     type = list(string)
     description = "A list of email addresses to whitelist"
-    default = ["craighoad@hotmail.com","thefearfanatic@gmail.com"]
+    default = []
 }
 
 variable mail_from {

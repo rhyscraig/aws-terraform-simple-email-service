@@ -74,7 +74,7 @@ resource "aws_ses_event_destination" "sns" {
 
 # Create email template
 resource "aws_ses_template" "MyTemplate" {
-  name    = var.domain_name
+  name    = "${var.domain_name}-${var.region}-email-template"
   subject = "Greetings, {{name}}!"
   html    = "<h1>Hello {{name}},</h1><p>Your favorite animal is {{favoriteanimal}}.</p>"
   text    = "Hello {{name}},\r\nYour favorite animal is {{favoriteanimal}}."
@@ -195,7 +195,7 @@ data "aws_iam_policy_document" "policy_document" {
 # Instanitate policy doc
 resource "aws_iam_policy" "policy" {
   for_each = { for email in var.trusted_email_addresses : email => email }
-  name   = "${var.domain}-${var.region}-SES-send-policy"
+  name   = "${var.domain}-${var.region}-${each.value}-SES-send-policy"
   policy = data.aws_iam_policy_document.policy_document[each.key].json
 }
 # Attach policy doc to user
@@ -208,5 +208,3 @@ resource "aws_iam_user_policy_attachment" "user_policy" {
 resource "aws_iam_access_key" "access_key" {
   user = aws_iam_user.user.name
 }
-
-

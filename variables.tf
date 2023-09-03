@@ -44,6 +44,11 @@ variable trusted_email_addresses {
 
 variable mail_from {
     type = string
-    description = "The mail_from e.g. 'info.example.com'"
+    description = "The mail_from e.g. 'info' in 'info.example.com'"
     default = ""
+}
+
+variable region {
+    type = string
+    description = "The region in which to deploy SES"
 }

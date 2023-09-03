@@ -26,7 +26,7 @@ resource "aws_s3_bucket_ownership_controls" "receipts" {
 # Create SNS topic
 resource "aws_sns_topic" "topic" {
   count = var.create_sns_topic ? 1 : 0 
-  name = "${local.account_id}-${var.domain_name}-sns-topic"  # Replace with your desired topic name
+  name = "${var.domain_name}-${var.region}-sns-topic"  # Replace with your desired topic name
 }
 
 # Create test topic subscription
@@ -82,7 +82,7 @@ resource "aws_ses_template" "MyTemplate" {
 
 # Configuration Set
 resource "aws_ses_configuration_set" "example" {
-  name = "configuration-set-1"
+  name = "${var.domain_name}-${var.region}-configuration-set"
 }
 
 // MAIN 
@@ -170,7 +170,7 @@ resource "aws_ses_email_identity" "example" {
 // SES SMTP Credentials
 # Create IAM user
 resource "aws_iam_user" "user" {
-  name = "${var.domain_name}-ses-user"
+  name = "${var.domain_name}-${var.region}-ses-user"
   force_destroy = "true"
   tags = var.default_tags
 }
@@ -195,7 +195,7 @@ data "aws_iam_policy_document" "policy_document" {
 # Instanitate policy doc
 resource "aws_iam_policy" "policy" {
   for_each = { for email in var.trusted_email_addresses : email => email }
-  name   = "SES-send-policy"
+  name   = "${var.domain}-${var.region}-SES-send-policy"
   policy = data.aws_iam_policy_document.policy_document[each.key].json
 }
 # Attach policy doc to user
@@ -208,3 +208,5 @@ resource "aws_iam_user_policy_attachment" "user_policy" {
 resource "aws_iam_access_key" "access_key" {
   user = aws_iam_user.user.name
 }
+
+

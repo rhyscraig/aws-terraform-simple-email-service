@@ -40,19 +40,19 @@ resource "aws_sns_topic_subscription" "user_updates_sqs_target" {
 resource "aws_ses_identity_notification_topic" "test1" {
   topic_arn                = aws_sns_topic.topic[0].arn
   notification_type        = "Bounce"
-  identity                 = aws_ses_domain_identity.example.*.domain
+  identity                 = aws_ses_domain_identity.example.domain
   include_original_headers = true
 }
 resource "aws_ses_identity_notification_topic" "test2" {
   topic_arn                = aws_sns_topic.topic[0].arn
   notification_type        = "Complaint"
-  identity                 = aws_ses_domain_identity.example.*.domain
+  identity                 = aws_ses_domain_identity.example.domain
   include_original_headers = true
 }
 resource "aws_ses_identity_notification_topic" "test3" {
   topic_arn                = aws_sns_topic.topic[0].arn
   notification_type        = "Delivery"
-  identity                 = aws_ses_domain_identity.example.*.domain
+  identity                 = aws_ses_domain_identity.example.domain
   include_original_headers = true
 }
 
@@ -64,7 +64,7 @@ resource "aws_ses_event_destination" "sns" {
   matching_types         = ["bounce", "send"]
 
   sns_destination {
-    topic_arn = aws_sns_topic.topic.*.arn
+    topic_arn = aws_sns_topic.topic[0].arn
   }
 }
 
@@ -149,7 +149,7 @@ resource "aws_route53_record" "example_ses_domain_mail_from_mx" {
   name    = aws_ses_domain_mail_from.example.mail_from_domain
   type    = "MX"
   ttl     = "600"
-  records = ["10 feedback-smtp.${local.region}.amazonses.com"] 
+  records = ["10 feedback-smtp.${var.region}.amazonses.com"] 
 }
 # Example Route53 TXT record for SPF
 resource "aws_route53_record" "example_ses_domain_mail_from_txt" {
@@ -194,13 +194,15 @@ data "aws_iam_policy_document" "policy_document" {
 }
 # Instanitate policy doc
 resource "aws_iam_policy" "policy" {
+  for_each = { for email in var.trusted_email_addresses : email => email }
   name   = "SES-send-policy"
-  policy = data.aws_iam_policy_document.policy_document.*.json
+  policy = data.aws_iam_policy_document.policy_document[each.key].json
 }
 # Attach policy doc to user
 resource "aws_iam_user_policy_attachment" "user_policy" {
+  for_each = { for email in var.trusted_email_addresses : email => email }
   user       = aws_iam_user.user.name
-  policy_arn = aws_iam_policy.policy.arn
+  policy_arn = aws_iam_policy.policy[each.key].arn
 }
 # Create SMTP access key
 resource "aws_iam_access_key" "access_key" {
